@@ -6,6 +6,7 @@ const C = require('../outils/controles');
 const bonne = () => ({
   $schema: 'node_modules/wrangler/config-schema.json',
   name: 'clippitstudio',
+  account_id: 'aeeb4be461ed38195fefd2e782f23684',
   compatibility_date: '2026-11-01',
   assets: { directory: 'public' },
   workers_dev: true,
@@ -30,6 +31,13 @@ test('le nom quiz-hardcore est refusé', () => {
 
 test('un nom résolu différent est refusé', () => {
   contient(verifier(bonne(), { name: 'quiz-hardcore' }), /résout le nom "quiz-hardcore"/);
+});
+
+test('un autre compte Cloudflare ou pas de compte est refusé', () => {
+  contient(verifier({ ...bonne(), account_id: '0123456789abcdef0123456789abcdef' }), /"account_id" doit être/);
+  const sans = bonne();
+  delete sans.account_id;
+  contient(verifier(sans), /"account_id" doit être/);
 });
 
 test('un script main est refusé', () => {
@@ -132,7 +140,7 @@ test('comparerQuiz : rien ne change -> aucune erreur', () => {
   assert.deepEqual(C.comparerQuiz(etat, structuredClone(etat)), []);
 });
 
-test('comparerQuiz : clé limitée des deux côtés -> seul l\'accueil compte', () => {
+test('comparerQuiz : accès limité des deux côtés -> seul l\'accueil compte', () => {
   const limite = { deploiement: null, limite: true, accueil: { statut: 200, titreOk: true } };
   assert.deepEqual(C.comparerQuiz(limite, structuredClone(limite)), []);
   contient(C.comparerQuiz(limite, { ...limite, accueil: { statut: 502, titreOk: false } }), /HTTP 502/);

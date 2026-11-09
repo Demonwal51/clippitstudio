@@ -3,6 +3,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "clippitstudio",
+  // Compte Cloudflare de wal (celui du quiz) : un membre invité y a aussi son
+  // propre compte, et wrangler ne doit pas lui demander lequel choisir.
+  "account_id": "aeeb4be461ed38195fefd2e782f23684",
   "compatibility_date": "2026-11-01",
 
   // Fichiers statiques uniquement, pas de "main" : aucun script exécuté,

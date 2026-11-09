@@ -4,13 +4,13 @@
 //
 //   npm run verifier                  contrôles du projet, sans réseau
 //   node outils/deployer.js --essai   tout, mais "deploy --dry-run" : rien n'est envoyé
-//   npm run deployer                  mise en ligne (lancée par GitHub Actions à chaque push sur main)
+//   npm run deployer                  mise en ligne, après `npx wrangler login`
 //
 // Le quiz (Worker quiz-hardcore) vit sur le même compte Cloudflare : on relève
 // son état avant, on le compare après, et on s'arrête net s'il a bougé.
 // La mise en ligne passe par `versions upload` + `versions deploy`, qui ne
-// touchent ni aux domaines ni aux routes : la clé de GitHub Actions peut rester
-// limitée au seul Worker clippitstudio, sans aucun droit sur la zone.
+// touchent ni aux domaines ni aux routes : un membre invité avec un accès
+// limité au seul Worker clippitstudio peut s'en servir.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -26,9 +26,6 @@ process.chdir(RACINE); // wrangler ne doit jamais lire une autre config que la n
 
 const ARGS = new Set(process.argv.slice(2));
 const MODE = ARGS.has('--verifier') ? 'verifier' : ARGS.has('--essai') ? 'essai' : 'deployer';
-const EN_CI = Boolean(process.env.GITHUB_ACTIONS || process.env.CI);
-const BRANCHE_CI = process.env.GITHUB_REF_NAME || '';
-const COMMIT_CI = (process.env.GITHUB_SHA || '').slice(0, 7);
 const CONFIG = 'wrangler.jsonc';
 const WRANGLER = path.join(RACINE, 'node_modules', 'wrangler', 'bin', 'wrangler.js');
 const QUIZ = {
@@ -183,51 +180,28 @@ async function enParallele(taches, largeur, travail) {
 
 // ---------- 2 et 4. Le quiz ----------
 
-// API Cloudflare appelée directement avec la clé de la CI : on obtient le code
-// HTTP exact, là où wrangler se contente parfois de « la requête a échoué ».
-async function apiCloudflare(chemin) {
-  const r = await obtenir('api.cloudflare.com', `/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}${chemin}`, null, {
-    authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`,
-    accept: 'application/json',
-  });
-  let json = null;
-  try { json = JSON.parse(r.corps.toString('utf8')); } catch { /* pas du JSON */ }
-  const erreurs = ((json && json.errors) || []).map((e) => `${e.message} [code: ${e.code}]`).join(' ; ');
-  return { statut: r.statut, json, resume: `HTTP ${r.statut}${erreurs ? ` : ${erreurs}` : ''}` };
-}
-
-async function verifierCle() {
-  const r = await apiCloudflare('/tokens/verify');
-  const actif = r.statut === 200 && r.json && r.json.success && r.json.result && r.json.result.status === 'active';
-  if (!actif) {
-    arreter(`[ERREUR] Cloudflare refuse la clé CLOUDFLARE_API_TOKEN (${r.resume}) : recolle-la dans les réglages du dépôt GitHub. Rien n'a été envoyé.`);
-  }
-  ok('clé Cloudflare valide');
-}
-
-// En CI : 401/403/404 avec une clé valide = le quiz est invisible pour elle,
-// donc elle est limitée à clippitstudio. Toute autre réponse est une erreur.
-async function deploiementsQuizCI() {
-  const r = await apiCloudflare(`/workers/scripts/${QUIZ.nom}/deployments`);
-  if (r.statut === 200 && r.json && r.json.result) {
-    const liste = Array.isArray(r.json.result) ? r.json.result : r.json.result.deployments;
-    return { deploiement: C.dernierDeploiement(liste), limite: false, diagnostic: '' };
-  }
-  return { deploiement: null, limite: [401, 403, 404].includes(r.statut), diagnostic: r.resume };
-}
-
-// En local : ta connexion wrangler, qui voit tout le compte. Un refus y est une erreur.
-async function deploiementsQuizLocal() {
-  const r = await wrangler(['deployments', 'list', '--name', QUIZ.nom, '--json'], { afficher: false });
-  let deploiement = null;
+async function lireDeploiements(nom) {
+  const r = await wrangler(['deployments', 'list', '--name', nom, '--json'], { afficher: false });
   if (r.code === 0) {
-    try { deploiement = C.dernierDeploiement(JSON.parse(r.sortie)); } catch { /* sortie illisible */ }
+    try { return { liste: JSON.parse(r.sortie), diagnostic: '' }; } catch { /* sortie illisible */ }
   }
-  return { deploiement, limite: false, diagnostic: r.code === 0 ? '' : C.resumerErreur(r.erreurs + '\n' + r.sortie) };
+  return { liste: null, diagnostic: C.resumerErreur(r.erreurs + '\n' + r.sortie) };
+}
+
+// wal (accès à tout le compte) lit les déploiements du quiz : contrôle complet.
+// Un membre invité avec un accès limité à clippitstudio ne voit pas le quiz :
+// on le prouve en lisant clippitstudio avec la même connexion. Ce membre ne
+// peut alors pas toucher au quiz, et seule sa page d'accueil est comparée
+// (elle repérerait aussi un quiz réellement disparu).
+async function deploiementsQuiz() {
+  const quiz = await lireDeploiements(QUIZ.nom);
+  if (Array.isArray(quiz.liste)) return { deploiement: C.dernierDeploiement(quiz.liste), limite: false, diagnostic: '' };
+  const nous = await lireDeploiements(C.NOM);
+  return { deploiement: null, limite: Array.isArray(nous.liste), diagnostic: quiz.diagnostic };
 }
 
 async function etatQuiz() {
-  const { deploiement, limite, diagnostic } = EN_CI ? await deploiementsQuizCI() : await deploiementsQuizLocal();
+  const { deploiement, limite, diagnostic } = await deploiementsQuiz();
   let accueil;
   try {
     const page = await obtenir(QUIZ.hote, '/');
@@ -302,8 +276,7 @@ function info(m) { console.log(`     ${m}`); }
 // ---------- Déroulé ----------
 
 async function principal() {
-  const contexte = EN_CI ? ` (GitHub Actions, branche ${BRANCHE_CI || '?'}, commit ${COMMIT_CI || '?'})` : '';
-  console.log(`clippitstudio : ${MODE}${contexte}`);
+  console.log(`clippitstudio : ${MODE}`);
 
   const fichiers = controlerProjet();
   if (MODE === 'verifier') {
@@ -311,20 +284,7 @@ async function principal() {
     return 0;
   }
 
-  if (EN_CI) {
-    if (BRANCHE_CI !== 'main') arreter(`[ERREUR] Branche "${BRANCHE_CI}" : seule main est mise en ligne.`);
-    for (const nom of ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']) {
-      // Un copier-coller dans GitHub garde souvent le retour à la ligne final,
-      // que l'en-tête HTTP refuse : on l'enlève. wrangler hérite de cet env.
-      const valeur = (process.env[nom] || '').trim();
-      if (!valeur) arreter(`[ERREUR] ${nom} absent des réglages du dépôt GitHub : préviens wal.`);
-      if (/\s/.test(valeur)) {
-        arreter(`[ERREUR] ${nom} contient un espace ou un retour à la ligne au milieu : recolle-le dans les réglages du dépôt GitHub.`);
-      }
-      process.env[nom] = valeur;
-    }
-  }
-  if (MODE === 'deployer' && !EN_CI) {
+  if (MODE === 'deployer') {
     controlerGit();
     if (!(await confirmer(`\nMettre en ligne sur ${C.DOMAINES.join(' et ')} ? (o/N) `))) {
       console.log("Annulé : rien n'a été envoyé.");
@@ -333,11 +293,9 @@ async function principal() {
   }
 
   etape('2. État de référence du quiz');
-  if (EN_CI) await verifierCle();
   const avant = await etatQuiz();
   if (avant.limite) {
-    ok('la clé ne voit pas le quiz : elle est limitée à clippitstudio, donc ne peut pas le modifier non plus');
-    info(`(réponse de Cloudflare : ${avant.diagnostic})`);
+    ok('ta connexion ne voit pas le quiz (accès limité à clippitstudio) : elle ne peut pas le modifier non plus');
   } else if (!avant.deploiement) {
     arreter(`[ERREUR] Impossible de lire les déploiements du quiz (${avant.diagnostic}). Rien n'a été envoyé.`);
   } else {
@@ -361,7 +319,7 @@ async function principal() {
     if (!version) {
       echec = 'identifiant de la version téléversée introuvable dans la sortie de wrangler.';
     } else {
-      const message = `GitHub ${COMMIT_CI || git('rev-parse', '--short', 'HEAD') || '?'}`;
+      const message = `commit ${git('rev-parse', '--short', 'HEAD') || '?'}`;
       const bascule = await wrangler(['versions', 'deploy', `${version}@100%`, ...cible, '--yes', '--message', message]);
       sorties += bascule.sortie + bascule.erreurs;
       if (bascule.code !== 0) echec = `wrangler versions deploy a échoué (code ${bascule.code}, voir plus haut).`;
@@ -393,7 +351,7 @@ async function principal() {
   }
   ok(apres.deploiement
     ? `quiz-hardcore : toujours le déploiement ${apres.deploiement.id.slice(0, 8)}, accueil en ligne`
-    : "quiz-hardcore : accueil en ligne (déploiements illisibles pour cette clé limitée)");
+    : "quiz-hardcore : accueil en ligne (déploiements invisibles avec un accès limité)");
 
   if (echec) return 1;
 

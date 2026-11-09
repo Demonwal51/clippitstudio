@@ -4,13 +4,14 @@
 // accidents ; elles ne protègent pas d'un membre malveillant (voir CLAUDE.md).
 
 const NOM = 'clippitstudio';
+const COMPTE = 'aeeb4be461ed38195fefd2e782f23684';  // compte de wal, celui du quiz
 const DOMAINES = ['clippitstudio.cc', 'www.clippitstudio.cc'];
 const DOSSIER = 'public';
 
 // Tout le reste (main, build, triggers, d1_databases, env, ...) est refusé :
 // le site doit rester fait de fichiers statiques, sans code exécuté.
 const CLES_AUTORISEES = new Set([
-  '$schema', 'name', 'compatibility_date', 'compatibility_flags',
+  '$schema', 'name', 'account_id', 'compatibility_date', 'compatibility_flags',
   'assets', 'workers_dev', 'routes',
 ]);
 const CLES_ASSETS = new Set(['directory', 'not_found_handling']);
@@ -39,6 +40,9 @@ function verifierConfig({ raw, resolu, redirige }) {
   }
   if (resolu && resolu.name !== NOM) {
     erreurs.push(`wrangler résout le nom "${resolu.name}" au lieu de "${NOM}".`);
+  }
+  if (raw.account_id !== COMPTE) {
+    erreurs.push(`"account_id" doit être "${COMPTE}" (le compte de wal), pas "${raw.account_id}".`);
   }
   if (resolu && resolu.main) {
     erreurs.push('Un script ("main") est déclaré : interdit, le site ne sert que des fichiers statiques.');
@@ -131,8 +135,8 @@ function dernierDeploiement(liste) {
 }
 
 // etat : { deploiement: { id, date } | null, limite: bool, accueil: { statut, titreOk } }
-// limite = la clé n'a pas le droit de lire le quiz : c'est la clé de GitHub
-// Actions, limitée à clippitstudio, qui ne peut donc pas le modifier non plus.
+// limite = la connexion n'a pas le droit de lire le quiz : c'est un membre
+// invité avec un accès limité à clippitstudio, qui ne peut donc pas le modifier non plus.
 function comparerQuiz(avant, apres) {
   const erreurs = [];
   if (!apres.accueil || apres.accueil.statut !== 200) {
@@ -167,7 +171,7 @@ function extraireVersion(sortie) {
 }
 
 module.exports = {
-  NOM, DOMAINES, DOSSIER, FICHIERS_SPECIAUX,
+  NOM, COMPTE, DOMAINES, DOSSIER, FICHIERS_SPECIAUX,
   verifierConfig, verifierRoutes, verifierFichiers, cheminVersUrl,
   dernierDeploiement, comparerQuiz, resumerErreur, extraireVersion,
 };

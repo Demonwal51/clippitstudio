@@ -2,41 +2,64 @@
 
 En ligne sur **https://clippitstudio.cc** (et https://www.clippitstudio.cc).
 
+## Une seule fois : s'installer
+
+1. Accepter l'invitation Cloudflare envoyée par wal (e-mail « You've been
+   invited… »). Elle donne accès au seul site `clippitstudio`, rien d'autre.
+2. Installer [Node.js](https://nodejs.org) (version LTS) et Git.
+3. Récupérer le projet et ses outils :
+
+   ```bash
+   git clone https://github.com/Demonwal51/clippitstudio.git
+   ```
+
+   ```bash
+   cd clippitstudio
+   ```
+
+   ```bash
+   npm ci
+   ```
+
+4. Se connecter à Cloudflare avec **son propre compte** (une page s'ouvre dans
+   le navigateur, accepter) :
+
+   ```bash
+   npx wrangler login
+   ```
+
 ## Mettre une modification en ligne
 
-1. Modifier les fichiers dans **`public/`** : `public/index.html` est la page
+1. `git pull` pour partir de la dernière version.
+2. Modifier les fichiers dans **`public/`** : `public/index.html` est la page
    d'accueil, les images vont dans `public/img/`.
-2. Faire un commit et le pousser sur la branche **`main`** (GitHub Desktop,
-   VS Code, `git push`, ou « Add file → Upload files » sur github.com).
-3. Environ une minute plus tard, c'est en ligne. Sur GitHub, à côté du commit
-   (ou dans l'onglet **Actions**) :
-   - **coche verte** : en ligne, et vérifié sur les deux adresses ;
-   - **croix rouge** : rien n'a changé en ligne, ou la vérification a trouvé un
-     problème. Voir « Si c'est rouge » plus bas.
+3. Faire un commit et le pousser sur **`main`** (`git push`, GitHub Desktop ou
+   VS Code).
+4. Mettre en ligne :
+
+   ```bash
+   npm run deployer
+   ```
+
+   L'outil vérifie les règles, demande confirmation (`o` puis Entrée), envoie,
+   puis contrôle que chaque fichier est bien servi sur les deux adresses. Il
+   refuse de partir si des modifications ne sont pas commitées.
 
 ## Voir le site avant de l'envoyer
-
-Une seule fois : `npm ci`. Ensuite :
 
 ```bash
 npx wrangler dev
 ```
 
-Puis http://localhost:8787. Cette commande ne contacte pas Cloudflare, rien
-n'est mis en ligne.
+Puis http://localhost:8787. Cette commande ne met rien en ligne.
 
-Pour vérifier que tes changements respectent les règles :
-
-```bash
-npm run verifier
-```
+Pour vérifier seulement les règles : `npm run verifier`.
 
 ## Règles
 
 - **Ne modifier que `public/`.** Ne touche pas à `wrangler.jsonc`, `outils/`,
-  `.github/`, `package.json` ni `package-lock.json`. Ce sont eux qui mettent le
-  site en ligne et le vérifient : s'ils sont modifiés de travers, la mise en
-  ligne est refusée.
+  `package.json` ni `package-lock.json` : ce sont eux qui mettent le site en
+  ligne et le vérifient. Modifiés de travers, la mise en ligne est refusée.
 - **Seulement des fichiers statiques** : HTML, CSS, JavaScript qui tourne dans
   le navigateur, images, polices. Pas de code serveur.
 - **Images légères** : visez moins de 1 Mo (format WebP, taille adaptée à
@@ -44,20 +67,21 @@ npm run verifier
 - **Le dépôt est public** : jamais de mot de passe, de clé ni de donnée
   personnelle dedans.
 
-## Si c'est rouge
+## Si ça échoue
 
-Clique sur la croix rouge, puis sur **Details** : le journal explique ce qui
-s'est passé, étape par étape. Les lignes `[ERREUR]` disent quoi corriger.
+Les lignes `[ERREUR]` disent quoi corriger.
 
-- Le plus souvent, un changement enfreint une règle (étape 1) : corrige ce
-  qui est signalé, puis pousse à nouveau. Rien n'a été envoyé. Tu peux aussi
-  vérifier avant de pousser avec `npm run verifier`.
-- Si le journal contient **« ARRÊT : ne tente PAS de réparer le quiz »** :
-  préviens wal et ne pousse plus rien tant qu'il n'a pas regardé.
-- Sinon, relance depuis l'onglet **Actions** (« Re-run jobs ») ou demande à wal.
+- Le plus souvent, un changement enfreint une règle (étape 1) : corrige ce qui
+  est signalé, commite, relance. Rien n'a été envoyé.
+- « More than one account » ou « Authentication error » : relance
+  `npx wrangler login`, et vérifie que tu as bien accepté l'invitation.
+- Si l'outil affiche **« ARRÊT : ne tente PAS de réparer le quiz »** :
+  préviens wal et ne relance rien tant qu'il n'a pas regardé.
 
 ## Pour wal
 
-- Mise en ligne depuis ton PC, avec confirmation : `npm run deployer`.
 - Essai complet sans rien envoyer : `node outils/deployer.js --essai`.
 - Tests du garde-fou : `npm test`.
+- Accès d'un membre : Cloudflare → Manage Account → Members → Invite, accès
+  limité au Worker `clippitstudio`, rôle Editor (jamais Admin, jamais tout le
+  compte).

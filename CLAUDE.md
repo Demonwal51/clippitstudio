@@ -30,54 +30,53 @@ que le quiz (`quiz-hardcore`). Pour l'instant : une page d'attente statique.
 
 ## Mise en ligne
 
-L'équipe pousse sur `main` du dépôt public
-https://github.com/Demonwal51/clippitstudio, sans validation. GitHub Actions
-(`.github/workflows/mise-en-ligne.yml`) lance alors `npm ci`, `npm test`, puis
-`npm run deployer`, c'est-à-dire `outils/deployer.js`, le garde-fou :
+Manuelle, depuis le PC de chacun : `git push` sur `main` du dépôt public
+https://github.com/Demonwal51/clippitstudio, puis `npm run deployer`, c'est-à-dire
+`outils/deployer.js`, le garde-fou :
 
-1. contrôles du projet (`outils/controles.js`) : nom `clippitstudio`, liste
-   blanche de clés dans `wrangler.jsonc` (pas de `main`, `build`, D1, cron,
-   `env`…), exactement les deux domaines personnalisés, limites de fichiers ;
-2. référence du quiz : dernier déploiement et page d'accueil. En local, par
-   `wrangler deployments list --json`. En CI, par l'API directement (wrangler
-   y renvoie parfois un échec sans détail) : d'abord `tokens/verify`, puis,
-   si la clé est valide, une réponse 401/403/404 sur les déploiements du quiz
-   prouve qu'elle est limitée à clippitstudio. Seule la page d'accueil est
-   alors comparée ;
+1. contrôles du projet (`outils/controles.js`) : nom `clippitstudio`,
+   `account_id` du compte de l'utilisateur, liste blanche de clés dans
+   `wrangler.jsonc` (pas de `main`, `build`, D1, cron, `env`…), exactement les
+   deux domaines personnalisés, limites de fichiers ;
+2. référence du quiz : dernier déploiement (`wrangler deployments list
+   --json`) et page d'accueil. Si le quiz est illisible mais que
+   `clippitstudio` se lit avec la même connexion, c'est un membre à accès
+   limité : seule la page d'accueil est alors comparée ;
 3. `versions upload` puis `versions deploy <id>@100% --yes`, avec `--config
    wrangler.jsonc --name clippitstudio`. Ces commandes ne touchent pas aux
-   domaines : la clé n'a besoin d'aucun droit sur la zone. Pour changer de
-   domaines, il faut un `wrangler deploy` en local, avec l'accord de
-   l'utilisateur ;
+   domaines : aucun droit sur la zone n'est nécessaire. Pour changer de
+   domaines, il faut un `wrangler deploy` lancé par l'utilisateur ou avec son
+   accord ;
 4. le quiz n'a pas bougé, sinon ARRÊT : ne pas réparer, prévenir ;
 5. empreinte SHA-256 de chaque fichier servi sur les deux domaines et sur
    workers.dev, égale à celle de `public/` (nouvelles tentatives pendant 60 s).
 
 Modes : `npm run verifier` (étape 1 seulement), `node outils/deployer.js
---essai` (tout, avec `--dry-run` ; rien n'est envoyé), `npm run deployer` en
-local (refuse si des modifications ne sont pas commitées, demande o/N, `--oui`
-sans terminal). Tests : `npm test` (`node --test`, sans dépendance). Un
-défaut corrigé = un test de plus dans `tests/controles.test.js`.
+--essai` (tout, avec `--dry-run` ; rien n'est envoyé), `npm run deployer`
+(refuse si des modifications ne sont pas commitées, demande o/N, `--oui` sans
+terminal). Tests : `npm test` (`node --test`, sans dépendance). Un défaut
+corrigé = un test de plus dans `tests/controles.test.js`.
 
-Réglages du dépôt GitHub (Settings → Secrets and variables → Actions) :
-secret `CLOUDFLARE_API_TOKEN`, variable `CLOUDFLARE_ACCOUNT_ID`. La clé est un
-**Account API token limité au Worker `clippitstudio`, rôle Editor**
-(« Specified Workers », disponible depuis septembre 2026 ; Editor met en
-ligne mais ne supprime pas). Elle n'a aucun droit sur le quiz, sa base D1, les
-zones ni les autres Workers. Ne jamais la remplacer par une clé plus large.
-Workers Builds n'a pas été retenu : sa clé vaut pour tout le compte (décision
-du 2026-11-09).
+Accès de l'équipe : chaque membre est **invité dans le compte Cloudflare**
+(Manage Account → Members), avec un accès limité au Worker `clippitstudio`,
+rôle Editor (met en ligne, ne supprime pas). Il se connecte avec son propre
+compte (`npx wrangler login`) et ne voit ni le quiz, ni sa base D1, ni les
+zones. Ne jamais donner Admin ni un accès à tout le compte.
+
+Le déploiement automatique (GitHub Actions avec une clé limitée à
+clippitstudio, puis Workers Builds, dont la clé vaut pour tout le compte) a
+été abandonné le 2026-11-09 : plus de workflow, de secret ni de clé CI.
 
 Pas de validation des push : tout membre qui écrit sur `main` peut changer le
-site ou y mettre du code. Au pire, il touche clippitstudio, jamais le quiz.
-Parade possible plus tard : protéger `main` (pull request validée par
-l'utilisateur), gratuit sur un dépôt public.
+site. Au pire, il touche clippitstudio, jamais le quiz. Parade possible plus
+tard : protéger `main` (pull request validée par l'utilisateur), gratuit sur
+un dépôt public.
 
 ## Pièges
 
 - wrangler 4.158 n'affiche pas le nom du Worker dans la sortie du dry-run :
   le garde-fou le lit avec `unstable_readConfig`.
-- Lancé sans terminal interactif (Claude, GitHub Actions), wrangler répond
+- Lancé sans terminal interactif (Claude, `--oui`), wrangler répond
   **oui** tout seul à ses questions de confirmation, y compris « remplacer ces
   enregistrements DNS / domaines ? ». Le garde-fou repère « fallback value »
   dans la sortie. Avant d'ajouter un domaine, vérifier par DoH qu'il n'a
