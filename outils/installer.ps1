@@ -1,19 +1,20 @@
-﻿# Installation de clippitstudio pour un membre de l'équipe (Windows).
+﻿# Installation de Clippit Studio pour un membre de l'équipe (Windows).
 #
 # À coller dans PowerShell (une seule ligne) :
 #   irm https://raw.githubusercontent.com/Demonwal51/clippitstudio/main/outils/installer.ps1 -OutFile $env:TEMP\clippit.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File $env:TEMP\clippit.ps1
 #
-# On peut la relancer sans risque : ce qui est déjà fait est sauté, le projet
-# est mis à jour. Fichier en UTF-8 avec BOM : sans BOM, PowerShell 5.1 lit les
-# accents de travers.
+# Aucune question : il faut seulement cliquer « Allow » / « Authorize » sur les
+# pages Cloudflare et GitHub qui s'ouvrent. On peut relancer la ligne sans
+# risque : ce qui est déjà fait est sauté, le projet est mis à jour.
+# Fichier en UTF-8 avec BOM : sans BOM, PowerShell 5.1 lit les accents de travers.
 # Essais seulement : CLIPPIT_DOSSIER et CLIPPIT_BUREAU remplacent le dossier du
-# projet et le bureau.
+# projet et le bureau (et la fenêtre n'est pas ouverte à la fin).
 
 $ErrorActionPreference = 'Continue'
 $DEPOT = 'https://github.com/Demonwal51/clippitstudio.git'
 $NODE_MIN = 22   # wrangler 4 exige Node >= 22
 $env:WRANGLER_SEND_METRICS = 'false'
-try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
+try { [Console]::OutputEncoding = New-Object Text.UTF8Encoding $false } catch { }
 
 function Etape($texte) { Write-Host ''; Write-Host "=== $texte" -ForegroundColor Cyan }
 function Ok($texte) { Write-Host "[OK] $texte" -ForegroundColor Green }
@@ -44,13 +45,15 @@ function InstallerAvecWinget($id, $nom, $lien) {
   if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
     Echec "$nom manque et winget n'est pas disponible. Installe $nom depuis $lien, ferme PowerShell, rouvre-le, puis relance."
   }
-  Info "Installation de $nom avec winget (en acceptant ses conditions d'utilisation)."
-  Info 'Windows peut demander une autorisation : accepte-la.'
+  Info "Installation de $nom (en acceptant ses conditions d'utilisation)."
+  Info 'Si Windows demande une autorisation, accepte-la.'
   & winget install --id $id -e --source winget --accept-package-agreements --accept-source-agreements
   RechargerPath
 }
 
-Write-Host 'Installation de clippitstudio' -ForegroundColor Cyan
+Write-Host 'Installation de Clippit Studio' -ForegroundColor Cyan
+Write-Host 'Deux pages vont s''ouvrir dans ton navigateur, Cloudflare puis GitHub :'
+Write-Host 'connecte-toi avec TON compte et clique « Allow » / « Authorize ». Rien d''autre à faire.'
 
 # --- 1. Git et Node
 Etape '1. Git et Node.js'
@@ -70,34 +73,15 @@ if ((VersionNode) -lt $NODE_MIN) {
 }
 Ok "Node.js $(& node -v)"
 
-# --- 2. Identité git (elle signe les modifications envoyées sur GitHub)
-Etape '2. Ton identité pour GitHub'
-function Demander($cle, $question) {
-  $valeur = "$(& git config --global $cle)".Trim()
-  for ($essai = 0; -not $valeur -and $essai -lt 3; $essai++) {
-    $valeur = "$(Read-Host $question)".Trim()
-  }
-  if (-not $valeur) { Echec 'Réponse vide : relance et réponds à la question.' }
-  & git config --global $cle $valeur
-  return $valeur
-}
-$nom = Demander 'user.name' 'Ton prénom (il signera tes modifications)'
-if (-not "$(& git config --global user.email)".Trim()) {
-  Info "Le dépôt est public : ton e-mail sera visible dans l'historique."
-  Info "Tu peux mettre l'adresse « noreply » de GitHub (github.com > Settings > Emails)."
-}
-$mail = Demander 'user.email' "L'e-mail de ton compte GitHub"
-Ok "$nom <$mail>"
-
-# --- 3. Le projet
-Etape '3. Le projet'
+# --- 2. Le projet
+Etape '2. Le projet'
 $dossier = $env:CLIPPIT_DOSSIER
 if (-not $dossier) { $dossier = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'clippitstudio' }
 
 if (Test-Path (Join-Path $dossier '.git')) {
-  & git -C $dossier pull --ff-only --quiet
+  & git -C $dossier -c advice.diverging=false pull --ff-only --quiet 2>$null
   if ($LASTEXITCODE -eq 0) { Ok "projet mis à jour : $dossier" }
-  else { Attention "projet pas mis à jour (modifications en cours ?) : le bouton « Mettre en ligne » s'en chargera." }
+  else { Attention "projet pas mis à jour (modifications en cours) : Clippit Studio s'en chargera à la mise en ligne." }
 } elseif ((Test-Path $dossier) -and (Get-ChildItem -Force $dossier | Select-Object -First 1)) {
   Echec "Le dossier $dossier existe déjà, mais ce n'est pas le projet. Renomme-le, puis relance."
 } else {
@@ -107,19 +91,27 @@ if (Test-Path (Join-Path $dossier '.git')) {
 }
 Set-Location $dossier
 
+# Identité qui signe les modifications. Sans identité git globale, on en pose
+# une dans ce projet seulement (sa configuration globale n'est pas touchée).
+if (-not "$(& git config user.name)".Trim()) { & git config user.name $env:USERNAME }
+if (-not "$(& git config user.email)".Trim()) {
+  $id = ($env:USERNAME.ToLower() -replace '[^a-z0-9._-]', '')
+  if (-not $id) { $id = 'membre' }
+  & git config user.email "$id@clippitstudio.invalid"
+}
+
 # npm.cmd et pas npm : PowerShell prendrait npm.ps1, bloqué par la politique
 # d'exécution des scripts par défaut.
 & npm.cmd ci --no-audit --no-fund --loglevel=error
 if ($LASTEXITCODE -ne 0) { Echec "L'installation des outils (npm ci) a échoué : lis le message au-dessus." }
-Ok 'outils installés (wrangler)'
+Ok 'outils installés'
 
-# --- 4. Cloudflare
-Etape '4. Ton compte Cloudflare'
+# --- 3. Cloudflare
+Etape '3. Ton compte Cloudflare'
 $wrangler = Join-Path $dossier 'node_modules\wrangler\bin\wrangler.js'
 & node $wrangler whoami --json *> $null
 if ($LASTEXITCODE -ne 0) {
-  Info 'Une page Cloudflare va s''ouvrir dans ton navigateur : connecte-toi avec TON compte,'
-  Info 'puis clique sur « Allow ». Reviens ensuite ici.'
+  Info 'Une page Cloudflare s''ouvre : connecte-toi avec TON compte, puis clique « Allow ».'
   & node $wrangler login
   & node $wrangler whoami --json *> $null
   if ($LASTEXITCODE -ne 0) { Echec "La connexion à Cloudflare n'a pas abouti." }
@@ -133,28 +125,38 @@ if ($LASTEXITCODE -ne 0) {
 }
 Ok 'accès au site clippitstudio confirmé'
 
-# --- 5. Raccourcis sur le bureau
-Etape '5. Raccourcis sur le bureau'
+# --- 4. GitHub : connexion une fois pour toutes, et droit d'envoi vérifié.
+# --dry-run n'envoie rien, mais demande la connexion comme un vrai envoi.
+Etape '4. Ton compte GitHub'
+Info 'Si une page GitHub s''ouvre : connecte-toi, puis clique « Authorize ».'
+& git push --dry-run --quiet
+if ($LASTEXITCODE -ne 0) {
+  Echec ("GitHub refuse l'envoi. Accepte l'invitation GitHub de wal (e-mail de GitHub, ou github.com > " +
+    'Notifications), ou demande-la-lui. Puis relance.')
+}
+Ok 'connexion GitHub et droit d''envoi confirmés'
+
+# --- 5. Raccourci sur le bureau
+Etape '5. Raccourci sur le bureau'
 $bureau = $env:CLIPPIT_BUREAU
 if (-not $bureau) { $bureau = [Environment]::GetFolderPath('Desktop') }   # suit OneDrive
+foreach ($ancien in 'Clippit - Mettre en ligne.lnk', 'Clippit - Fichiers du site.lnk') {
+  Remove-Item (Join-Path $bureau $ancien) -ErrorAction SilentlyContinue
+}
 $shell = New-Object -ComObject WScript.Shell
-
-$bouton = $shell.CreateShortcut((Join-Path $bureau 'Clippit - Mettre en ligne.lnk'))
-$bouton.TargetPath = Join-Path $PSHOME 'powershell.exe'
-$bouton.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$dossier\outils\mettre-en-ligne.ps1`""
-$bouton.WorkingDirectory = $dossier
-$bouton.Description = 'Envoie les modifications de public sur GitHub, puis sur clippitstudio.cc'
-$bouton.Save()
-
-$fichiers = $shell.CreateShortcut((Join-Path $bureau 'Clippit - Fichiers du site.lnk'))
-$fichiers.TargetPath = Join-Path $dossier 'public'
-$fichiers.Description = 'Les fichiers du site (index.html = page d''accueil)'
-$fichiers.Save()
-Ok "« Clippit - Mettre en ligne » et « Clippit - Fichiers du site » créés"
+$lien = $shell.CreateShortcut((Join-Path $bureau 'Clippit Studio.lnk'))
+$lien.TargetPath = Join-Path $PSHOME 'powershell.exe'
+$lien.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$dossier\outils\clippit-studio.ps1`""
+$lien.WorkingDirectory = $dossier
+$lien.WindowStyle = 7   # console réduite : seule la fenêtre de l'appli se voit
+$lien.IconLocation = "$dossier\outils\clippit.ico,0"
+$lien.Description = 'Modifier et mettre en ligne clippitstudio.cc'
+$lien.Save()
+Ok '« Clippit Studio » créé sur le bureau'
 
 Write-Host ''
-Write-Host 'Installation terminée.' -ForegroundColor Green
-Write-Host '- Modifier le site : raccourci « Clippit - Fichiers du site » (index.html = page d''accueil).'
-Write-Host '- Mettre en ligne : double-clic sur « Clippit - Mettre en ligne ».'
-Write-Host '- Règles et aide : README.md dans le dossier du projet.'
+Write-Host 'Installation terminée : double-clique sur « Clippit Studio » sur ton bureau.' -ForegroundColor Green
+if (-not $env:CLIPPIT_BUREAU) {
+  Start-Process $lien.TargetPath -ArgumentList $lien.Arguments -WorkingDirectory $dossier -WindowStyle Hidden
+}
 exit 0

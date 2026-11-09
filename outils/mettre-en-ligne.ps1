@@ -1,25 +1,31 @@
-﻿# Bouton « Mettre en ligne » de clippitstudio (raccourci créé par installer.ps1).
-#   1. enregistre les modifications de public\ (commit) ;
+﻿# Moteur de mise en ligne de clippitstudio, lancé par la fenêtre Clippit Studio
+# (clippit-studio.ps1) ou à la main dans une console. Aucune question :
+#   1. enregistre les modifications de public\ (commit, message automatique) ;
 #   2. récupère celles des autres (git pull --rebase) ;
 #   3. envoie sur GitHub, pour que personne n'écrase le travail des autres ;
 #   4. met en ligne sur Cloudflare avec le garde-fou (outils\deployer.js).
+# CLIPPIT_FENETRE=1 (posé par la fenêtre, qui a déjà demandé confirmation) :
+#   pas de pause à la fin, et deployer.js --oui.
 # CLIPPIT_ESSAI=1 : commit local seulement, pas d'envoi sur GitHub, et
-# deployer.js --essai (rien n'est mis en ligne).
+#   deployer.js --essai (rien n'est mis en ligne).
 # Fichier en UTF-8 avec BOM : sans BOM, PowerShell 5.1 lit les accents de travers.
 
 $ErrorActionPreference = 'Continue'
 $essai = [bool]$env:CLIPPIT_ESSAI
+$fenetre = [bool]$env:CLIPPIT_FENETRE
 $env:WRANGLER_SEND_METRICS = 'false'
-try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
-try { $Host.UI.RawUI.WindowTitle = 'Clippit - Mettre en ligne' } catch { }
+try { [Console]::OutputEncoding = New-Object Text.UTF8Encoding $false } catch { }
+if (-not $fenetre) { try { $Host.UI.RawUI.WindowTitle = 'Clippit - Mettre en ligne' } catch { } }
 Set-Location (Split-Path -Parent $PSScriptRoot)
 
 function Etape($texte) { Write-Host ''; Write-Host "=== $texte" -ForegroundColor Cyan }
 function Ok($texte) { Write-Host "[OK] $texte" -ForegroundColor Green }
 function Info($texte) { Write-Host "     $texte" }
 function Fin($code) {
-  Write-Host ''
-  if (-not $env:CLIPPIT_SANS_PAUSE) { Read-Host 'Appuie sur Entrée pour fermer' | Out-Null }
+  if (-not $fenetre -and -not $env:CLIPPIT_SANS_PAUSE) {
+    Write-Host ''
+    Read-Host 'Appuie sur Entrée pour fermer' | Out-Null
+  }
   exit $code
 }
 function Echec($texte) {
@@ -52,13 +58,13 @@ if ($horsPublic.Count) {
   Echec 'Seuls les fichiers du dossier public se modifient. Remets ceux-là comme avant, ou demande à wal.'
 }
 if ($dansPublic.Count) {
-  $dansPublic | ForEach-Object { Write-Host "  $_" }
-  $message = "$(Read-Host 'Décris ta modification en quelques mots (Entrée = « Mise à jour du site »)')".Trim()
-  if (-not $message) { $message = 'Mise à jour du site' }
+  $noms = @($dansPublic | ForEach-Object { (($_.Substring(3) -split ' -> ')[-1]).Trim('"') -replace '^public/', '' })
+  $message = 'Mise à jour du site : ' + (($noms | Select-Object -First 3) -join ', ')
+  if ($noms.Count -gt 3) { $message += " (+$($noms.Count - 3))" }
   & git add -A -- public
   & git commit --quiet -m $message
   if ($LASTEXITCODE -ne 0) { Echec "L'enregistrement (commit) a échoué : lis le message au-dessus." }
-  Ok "modifications enregistrées : $message"
+  Ok $message
 } else {
   Ok 'aucune nouvelle modification dans public'
 }
@@ -83,20 +89,16 @@ if (("$(& git rev-parse HEAD:package-lock.json 2>$null)" -ne $verrouAvant) -or -
 # --- 3. GitHub
 Etape '3. Envoi sur GitHub'
 $enAvance = [int]"$(& git rev-list --count '@{u}..HEAD')"
-if ($enAvance -eq 0 -and -not $dansPublic.Count) {
-  $reponse = "$(Read-Host 'Rien de nouveau à envoyer. Remettre le site en ligne quand même ? (o/N)')".Trim()
-  if ($reponse -notmatch '^(o|oui|y|yes)$') { Write-Host 'Rien à faire.'; Fin 0 }
-}
 if ($enAvance -eq 0) {
   Ok 'GitHub a déjà cette version'
+  if (-not $dansPublic.Count) { Info 'Rien de nouveau : la version actuelle est remise en ligne.' }
 } elseif ($essai) {
   Info "[essai] envoi sauté ($enAvance commit(s) restent sur ce PC)"
 } else {
-  Info 'La première fois, une fenêtre GitHub peut s''ouvrir pour te connecter.'
   & git push --quiet
   if ($LASTEXITCODE -ne 0) {
-    Echec ("GitHub refuse l'envoi. Si c'est la première fois : demande à wal de t'ajouter au dépôt " +
-      "(Settings > Collaborators), accepte l'invitation GitHub reçue par e-mail, puis relance.")
+    Echec ("GitHub refuse l'envoi. Accepte l'invitation GitHub de wal (ou demande-la), " +
+      "puis relance l'installation pour te connecter.")
   }
   Ok 'envoyé sur GitHub'
 }
@@ -104,7 +106,7 @@ if ($enAvance -eq 0) {
 # --- 4. Cloudflare
 Etape '4. Mise en ligne sur Cloudflare'
 $arguments = @('outils\deployer.js')
-if ($essai) { $arguments += '--essai' }
+if ($essai) { $arguments += '--essai' } elseif ($fenetre) { $arguments += '--oui' }
 & node @arguments
 if ($LASTEXITCODE -ne 0) {
   Write-Host ''

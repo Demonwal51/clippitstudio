@@ -64,20 +64,32 @@ compte (`npx wrangler login`) et ne voit ni le quiz, ni sa base D1, ni les
 zones. Ne jamais donner Admin ni un accès à tout le compte. Sur GitHub, il
 est collaborateur (Write) pour pouvoir pousser.
 
-Pour les membres sous Windows :
+Pour les membres sous Windows, « Clippit Studio », sans aucune question à
+taper (choix du 2026-11-09 : « vraiment simple ») :
 - `outils/installer.ps1`, lancé par la ligne `irm … -OutFile` du README :
-  installe Git et Node ≥ 22 par winget, demande l'identité git, clone dans
-  `Documents\clippitstudio`, `npm ci`, `wrangler login`, vérifie l'accès par
-  `deployments list --name clippitstudio`, puis crée deux raccourcis sur le
-  bureau ;
-- `outils/mettre-en-ligne.ps1`, le raccourci « Clippit - Mettre en ligne » :
-  refuse les changements hors de `public/`, commit, `pull --rebase`
-  (`npm ci` si `package-lock.json` a changé), `push`, puis `deployer.js`.
-  `CLIPPIT_ESSAI=1` : sans push, avec `--essai`.
+  installe Git et Node ≥ 22 par winget, clone dans `Documents\clippitstudio`,
+  pose une identité git **locale au dépôt** s'il n'y en a pas de globale,
+  `npm ci`, `wrangler login`, vérifie l'accès (`deployments list --name
+  clippitstudio`), connecte GitHub et vérifie le droit d'envoi (`git push
+  --dry-run`), crée l'icône « Clippit Studio », puis ouvre l'appli ;
+- `outils/clippit-studio.ps1`, la fenêtre WinForms : `git pull --ff-only` à
+  l'ouverture, puis quatre boutons (dossier `public`, aperçu
+  `public\index.html`, mettre en ligne avec confirmation Oui/Non, site en
+  ligne) et un journal en couleur. Les processus sont lus par
+  `ReadLineAsync()` + `Windows.Forms.Timer` : un scriptblock branché sur
+  `OutputDataReceived` tournerait sur un autre fil et planterait ;
+- `outils/mettre-en-ligne.ps1`, le moteur : refuse les changements hors de
+  `public/`, commit (message automatique), `pull --rebase` (`npm ci` si
+  `package-lock.json` a changé), `push`, puis `deployer.js` (`--oui` quand
+  `CLIPPIT_FENETRE=1`, posé par la fenêtre). `CLIPPIT_ESSAI=1` : sans push,
+  avec `--essai` ;
+- `outils/clippit.ico` : généré depuis `public/img/logo-960.webp` (Pillow).
 
-Tests : `CLIPPIT_DOSSIER`, `CLIPPIT_BUREAU` et `CLIPPIT_SANS_PAUSE`, plus
-`GIT_CONFIG_GLOBAL` vers un fichier jetable, pour ne pas toucher la config git
-de l'utilisateur, qui n'a pas d'identité globale sur DEMONWAL.
+Tests : `CLIPPIT_DOSSIER`, `CLIPPIT_BUREAU`, `CLIPPIT_SANS_PAUSE` et
+`CLIPPIT_AUTOTEST=<png>` (la fenêtre fait un essai, s'enregistre en image et
+se ferme), plus `GIT_CONFIG_GLOBAL` vers un fichier jetable, pour ne pas
+toucher la config git de l'utilisateur, qui n'a pas d'identité globale sur
+DEMONWAL.
 
 Le déploiement automatique (GitHub Actions avec une clé limitée à
 clippitstudio, puis Workers Builds, dont la clé vaut pour tout le compte) a
