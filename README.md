@@ -2,48 +2,36 @@
 
 En ligne sur **https://clippitstudio.cc** (et https://www.clippitstudio.cc).
 
-## Une seule fois : s'installer
+## Une seule fois : s'installer (Windows)
 
-1. Accepter l'invitation Cloudflare envoyée par wal (e-mail « You've been
-   invited… »). Elle donne accès au seul site `clippitstudio`, rien d'autre.
-2. Installer [Node.js](https://nodejs.org) (version LTS) et Git.
-3. Récupérer le projet et ses outils :
+1. Accepter les deux invitations envoyées par wal : celle de **Cloudflare**
+   (accès au seul site `clippitstudio`) et celle de **GitHub** (droit d'envoyer
+   sur le dépôt).
+2. Ouvrir **PowerShell** (menu Démarrer → « PowerShell »), y coller cette
+   ligne, puis Entrée :
 
-   ```bash
-   git clone https://github.com/Demonwal51/clippitstudio.git
+   ```powershell
+   irm https://raw.githubusercontent.com/Demonwal51/clippitstudio/main/outils/installer.ps1 -OutFile $env:TEMP\clippit.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File $env:TEMP\clippit.ps1
    ```
 
-   ```bash
-   cd clippitstudio
-   ```
-
-   ```bash
-   npm ci
-   ```
-
-4. Se connecter à Cloudflare avec **son propre compte** (une page s'ouvre dans
-   le navigateur, accepter) :
-
-   ```bash
-   npx wrangler login
-   ```
+   Elle installe Git et Node.js s'il le faut, copie le projet dans
+   `Documents\clippitstudio`, te connecte à Cloudflare avec **ton propre
+   compte** (une page s'ouvre : clique « Allow »), puis crée deux raccourcis
+   sur le bureau. En cas d'erreur, corrige ce qu'elle dit et relance la même
+   ligne.
 
 ## Mettre une modification en ligne
 
-1. `git pull` pour partir de la dernière version.
-2. Modifier les fichiers dans **`public/`** : `public/index.html` est la page
-   d'accueil, les images vont dans `public/img/`.
-3. Faire un commit et le pousser sur **`main`** (`git push`, GitHub Desktop ou
-   VS Code).
-4. Mettre en ligne :
+1. **« Clippit - Fichiers du site »** (sur le bureau) : modifie les fichiers.
+   `index.html` est la page d'accueil, les images vont dans `img/`.
+2. Double-clic sur **« Clippit - Mettre en ligne »**. Il enregistre tes
+   modifications (il te demande de les décrire en quelques mots), récupère
+   celles des autres, envoie le tout sur GitHub, puis met en ligne sur
+   Cloudflare après une dernière confirmation (`o` puis Entrée). Il vérifie
+   ensuite que chaque fichier est bien servi sur les deux adresses.
 
-   ```bash
-   npm run deployer
-   ```
-
-   L'outil vérifie les règles, demande confirmation (`o` puis Entrée), envoie,
-   puis contrôle que chaque fichier est bien servi sur les deux adresses. Il
-   refuse de partir si des modifications ne sont pas commitées.
+Sans le raccourci, la même chose à la main : commit, `git pull --rebase`,
+`git push`, puis `npm run deployer`.
 
 ## Voir le site avant de l'envoyer
 
@@ -73,15 +61,20 @@ Les lignes `[ERREUR]` disent quoi corriger.
 
 - Le plus souvent, un changement enfreint une règle (étape 1) : corrige ce qui
   est signalé, commite, relance. Rien n'a été envoyé.
+- « GitHub refuse l'envoi » : accepte l'invitation GitHub de wal (ou
+  demande-la), puis relance.
 - « More than one account » ou « Authentication error » : relance
-  `npx wrangler login`, et vérifie que tu as bien accepté l'invitation.
+  `npx wrangler login` dans le dossier du projet, et vérifie que tu as bien
+  accepté l'invitation Cloudflare.
 - Si l'outil affiche **« ARRÊT : ne tente PAS de réparer le quiz »** :
   préviens wal et ne relance rien tant qu'il n'a pas regardé.
 
 ## Pour wal
 
-- Essai complet sans rien envoyer : `node outils/deployer.js --essai`.
+- Essai complet sans rien envoyer : `node outils/deployer.js --essai`, ou le
+  bouton avec la variable `CLIPPIT_ESSAI=1` (commit local, pas de push).
 - Tests du garde-fou : `npm test`.
 - Accès d'un membre : Cloudflare → Manage Account → Members → Invite, accès
   limité au Worker `clippitstudio`, rôle Editor (jamais Admin, jamais tout le
-  compte).
+  compte). Plus, sur GitHub : Settings → Collaborators → Add people, rôle
+  Write.

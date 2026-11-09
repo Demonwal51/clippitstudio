@@ -61,7 +61,23 @@ Accès de l'équipe : chaque membre est **invité dans le compte Cloudflare**
 (Manage Account → Members), avec un accès limité au Worker `clippitstudio`,
 rôle Editor (met en ligne, ne supprime pas). Il se connecte avec son propre
 compte (`npx wrangler login`) et ne voit ni le quiz, ni sa base D1, ni les
-zones. Ne jamais donner Admin ni un accès à tout le compte.
+zones. Ne jamais donner Admin ni un accès à tout le compte. Sur GitHub, il
+est collaborateur (Write) pour pouvoir pousser.
+
+Pour les membres sous Windows :
+- `outils/installer.ps1`, lancé par la ligne `irm … -OutFile` du README :
+  installe Git et Node ≥ 22 par winget, demande l'identité git, clone dans
+  `Documents\clippitstudio`, `npm ci`, `wrangler login`, vérifie l'accès par
+  `deployments list --name clippitstudio`, puis crée deux raccourcis sur le
+  bureau ;
+- `outils/mettre-en-ligne.ps1`, le raccourci « Clippit - Mettre en ligne » :
+  refuse les changements hors de `public/`, commit, `pull --rebase`
+  (`npm ci` si `package-lock.json` a changé), `push`, puis `deployer.js`.
+  `CLIPPIT_ESSAI=1` : sans push, avec `--essai`.
+
+Tests : `CLIPPIT_DOSSIER`, `CLIPPIT_BUREAU` et `CLIPPIT_SANS_PAUSE`, plus
+`GIT_CONFIG_GLOBAL` vers un fichier jetable, pour ne pas toucher la config git
+de l'utilisateur, qui n'a pas d'identité globale sur DEMONWAL.
 
 Le déploiement automatique (GitHub Actions avec une clé limitée à
 clippitstudio, puis Workers Builds, dont la clé vaut pour tout le compte) a
@@ -94,3 +110,10 @@ un dépôt public.
   (https://quiz-hardcore.quiz-hardcore.workers.dev et
   `npx wrangler deployments list --name quiz-hardcore`) : le garde-fou le fait
   déjà.
+- Scripts PowerShell (`outils/*.ps1`) : UTF-8 **avec BOM** (sinon
+  PowerShell 5.1 lit les accents de travers ; Write et Edit l'enlèvent,
+  le remettre après chaque modification) et fins de ligne CRLF
+  (`.gitattributes`). Appeler `npm.cmd`, jamais `npm` : PowerShell prendrait
+  `npm.ps1`, bloqué par la politique d'exécution. Le script se lance par
+  `-File` après téléchargement, et non par `irm | iex`, pour garder le BOM et
+  contourner cette politique.
