@@ -10,5 +10,12 @@
   "assets": { "directory": "public" },
 
   // Servi aussi sur https://clippitstudio.quiz-hardcore.workers.dev
-  "workers_dev": true
+  "workers_dev": true,
+
+  // Domaines personnalisés : le déploiement crée lui-même les enregistrements DNS.
+  // Jamais de route générique *.clippitstudio.cc/* : quiz.clippitstudio.cc est réservé au quiz.
+  "routes": [
+    { "pattern": "clippitstudio.cc", "custom_domain": true },
+    { "pattern": "www.clippitstudio.cc", "custom_domain": true }
+  ]
 }
