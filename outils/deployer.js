@@ -4,10 +4,13 @@
 //
 //   npm run verifier                  contrôles du projet, sans réseau
 //   node outils/deployer.js --essai   tout, mais "deploy --dry-run" : rien n'est envoyé
-//   npm run deployer                  mise en ligne (commande de Workers Builds)
+//   npm run deployer                  mise en ligne (lancée par GitHub Actions à chaque push sur main)
 //
 // Le quiz (Worker quiz-hardcore) vit sur le même compte Cloudflare : on relève
 // son état avant, on le compare après, et on s'arrête net s'il a bougé.
+// La mise en ligne passe par `versions upload` + `versions deploy`, qui ne
+// touchent ni aux domaines ni aux routes : la clé de GitHub Actions peut rester
+// limitée au seul Worker clippitstudio, sans aucun droit sur la zone.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -23,7 +26,9 @@ process.chdir(RACINE); // wrangler ne doit jamais lire une autre config que la n
 
 const ARGS = new Set(process.argv.slice(2));
 const MODE = ARGS.has('--verifier') ? 'verifier' : ARGS.has('--essai') ? 'essai' : 'deployer';
-const EN_CI = Boolean(process.env.WORKERS_CI || process.env.CI);
+const EN_CI = Boolean(process.env.GITHUB_ACTIONS || process.env.CI);
+const BRANCHE_CI = process.env.GITHUB_REF_NAME || '';
+const COMMIT_CI = (process.env.GITHUB_SHA || '').slice(0, 7);
 const CONFIG = 'wrangler.jsonc';
 const WRANGLER = path.join(RACINE, 'node_modules', 'wrangler', 'bin', 'wrangler.js');
 const QUIZ = {
@@ -184,6 +189,9 @@ async function etatQuiz() {
   if (r.code === 0) {
     try { deploiement = C.dernierDeploiement(JSON.parse(r.sortie)); } catch { /* sortie illisible */ }
   }
+  // En CI, un refus prouve que la clé est limitée à clippitstudio. En local
+  // (ta connexion wrangler, qui voit tout le compte), un refus reste une erreur.
+  const limite = EN_CI && !deploiement && r.code !== 0 && C.estRefusDAcces(r.sortie + r.erreurs);
   let accueil;
   try {
     const page = await obtenir(QUIZ.hote, '/');
@@ -192,7 +200,7 @@ async function etatQuiz() {
     accueil = { statut: 0, titreOk: false, detail: e.message };
   }
   const diagnostic = (r.erreurs || r.sortie).trim().split('\n').slice(-3).join(' ');
-  return { deploiement, accueil, diagnostic };
+  return { deploiement, limite, accueil, diagnostic };
 }
 
 // ---------- 5. Le site en ligne ----------
@@ -259,9 +267,7 @@ function info(m) { console.log(`     ${m}`); }
 // ---------- Déroulé ----------
 
 async function principal() {
-  const contexte = EN_CI
-    ? ` (Workers Builds, branche ${process.env.WORKERS_CI_BRANCH || '?'}, commit ${(process.env.WORKERS_CI_COMMIT_SHA || '?').slice(0, 7)})`
-    : '';
+  const contexte = EN_CI ? ` (GitHub Actions, branche ${BRANCHE_CI || '?'}, commit ${COMMIT_CI || '?'})` : '';
   console.log(`clippitstudio : ${MODE}${contexte}`);
 
   const fichiers = controlerProjet();
@@ -270,8 +276,11 @@ async function principal() {
     return 0;
   }
 
-  if (EN_CI && process.env.WORKERS_CI_BRANCH && process.env.WORKERS_CI_BRANCH !== 'main') {
-    arreter(`[ERREUR] Branche "${process.env.WORKERS_CI_BRANCH}" : seule main est mise en ligne.`);
+  if (EN_CI) {
+    if (BRANCHE_CI !== 'main') arreter(`[ERREUR] Branche "${BRANCHE_CI}" : seule main est mise en ligne.`);
+    if (!process.env.CLOUDFLARE_API_TOKEN || !process.env.CLOUDFLARE_ACCOUNT_ID) {
+      arreter('[ERREUR] Secret CLOUDFLARE_API_TOKEN ou variable CLOUDFLARE_ACCOUNT_ID absents des réglages du dépôt GitHub : préviens wal.');
+    }
   }
   if (MODE === 'deployer' && !EN_CI) {
     controlerGit();
@@ -283,31 +292,48 @@ async function principal() {
 
   etape('2. État de référence du quiz');
   const avant = await etatQuiz();
-  if (!avant.deploiement) {
+  if (avant.limite) {
+    ok('la clé ne peut pas lire le quiz : elle est limitée à clippitstudio, donc ne peut pas le modifier non plus');
+  } else if (!avant.deploiement) {
     arreter(`[ERREUR] Impossible de lire les déploiements du quiz (${avant.diagnostic}). Rien n'a été envoyé.`);
+  } else {
+    ok(`quiz-hardcore : déploiement ${avant.deploiement.id.slice(0, 8)} du ${avant.deploiement.date}`);
   }
   if (avant.accueil.statut !== 200 || !avant.accueil.titreOk) {
     arreter(`[ERREUR] Le quiz ne répond déjà pas normalement (HTTP ${avant.accueil.statut}). Rien n'a été envoyé : préviens wal.`);
   }
-  ok(`quiz-hardcore : déploiement ${avant.deploiement.id.slice(0, 8)} du ${avant.deploiement.date}, accueil en ligne`);
+  ok("page d'accueil du quiz en ligne");
 
+  // Deux temps : téléverser une version, puis la mettre en service à 100 %.
+  // Aucun des deux ne touche aux domaines, déjà rattachés une fois pour toutes.
   etape(MODE === 'essai' ? "3. Essai (--dry-run) : rien n'est envoyé" : '3. Mise en ligne');
-  const args = ['deploy', '--config', CONFIG, '--name', C.NOM];
-  if (MODE === 'essai') args.push('--dry-run');
-  const envoi = await wrangler(args);
+  const cible = ['--config', CONFIG, '--name', C.NOM];
+  const envoi = await wrangler(['versions', 'upload', ...cible, ...(MODE === 'essai' ? ['--dry-run'] : [])]);
+  let sorties = envoi.sortie + envoi.erreurs;
+  let echec = envoi.code !== 0 ? `wrangler versions upload a échoué (code ${envoi.code}, voir plus haut).` : null;
+  let version = null;
+  if (!echec && MODE !== 'essai') {
+    version = C.extraireVersion(sorties);
+    if (!version) {
+      echec = 'identifiant de la version téléversée introuvable dans la sortie de wrangler.';
+    } else {
+      const message = `GitHub ${COMMIT_CI || git('rev-parse', '--short', 'HEAD') || '?'}`;
+      const bascule = await wrangler(['versions', 'deploy', `${version}@100%`, ...cible, '--yes', '--message', message]);
+      sorties += bascule.sortie + bascule.erreurs;
+      if (bascule.code !== 0) echec = `wrangler versions deploy a échoué (code ${bascule.code}, voir plus haut).`;
+    }
+  }
   const problemes = [];
-  if (/fallback value/i.test(envoi.sortie + envoi.erreurs)) {
+  if (/fallback value/i.test(sorties)) {
     const m = 'wrangler a répondu OUI tout seul à une question (voir plus haut) : vérifie dans le tableau de bord ce qui a été remplacé.';
     erreur(m);
     problemes.push(m);
   }
-  if (envoi.code !== 0) {
-    const m = `wrangler deploy a échoué (code ${envoi.code}, voir plus haut).`;
-    erreur(m);
-    problemes.push(m);
+  if (echec) {
+    erreur(echec);
+    problemes.push(echec);
   } else {
-    const version = /Current Version ID:\s*(\S+)/.exec(envoi.sortie);
-    ok(MODE === 'essai' ? 'dry-run réussi' : `en ligne, version ${version ? version[1] : '?'}`);
+    ok(MODE === 'essai' ? 'dry-run réussi' : `en ligne, version ${version}`);
   }
 
   // Toujours, même si l'envoi a échoué : il a pu faire quelque chose avant.
@@ -321,9 +347,11 @@ async function principal() {
       '!!! ARRÊT : ne tente PAS de réparer le quiz. Préviens wal tout de suite. !!!',
     ]);
   }
-  ok(`quiz-hardcore : toujours le déploiement ${apres.deploiement.id.slice(0, 8)}, accueil en ligne`);
+  ok(apres.deploiement
+    ? `quiz-hardcore : toujours le déploiement ${apres.deploiement.id.slice(0, 8)}, accueil en ligne`
+    : "quiz-hardcore : accueil en ligne (déploiements illisibles pour cette clé limitée)");
 
-  if (envoi.code !== 0) return 1;
+  if (echec) return 1;
 
   etape(MODE === 'essai' ? '5. Le site en ligne (comparaison simple)' : '5. Le site en ligne est-il à jour ?');
   problemes.push(...await verifierEnLigne(fichiers, MODE === 'deployer'));

@@ -132,6 +132,27 @@ test('comparerQuiz : rien ne change -> aucune erreur', () => {
   assert.deepEqual(C.comparerQuiz(etat, structuredClone(etat)), []);
 });
 
+test('comparerQuiz : clé limitée des deux côtés -> seul l\'accueil compte', () => {
+  const limite = { deploiement: null, limite: true, accueil: { statut: 200, titreOk: true } };
+  assert.deepEqual(C.comparerQuiz(limite, structuredClone(limite)), []);
+  contient(C.comparerQuiz(limite, { ...limite, accueil: { statut: 502, titreOk: false } }), /HTTP 502/);
+  // limitée avant mais plus après : incohérent, donc erreur
+  contient(C.comparerQuiz(limite, { ...limite, limite: false }), /Impossible de lire/);
+});
+
+test('refus d\'accès reconnu, autres erreurs non', () => {
+  assert.ok(C.estRefusDAcces('A request to the Cloudflare API failed.\n  Authentication error [code: 10000]'));
+  assert.ok(C.estRefusDAcces('failed with status 403 Forbidden'));
+  assert.ok(!C.estRefusDAcces('This Worker does not exist on your account. [code: 10007]'));
+  assert.ok(!C.estRefusDAcces('getaddrinfo ENOTFOUND api.cloudflare.com'));
+});
+
+test('identifiant de version extrait de la sortie de versions upload', () => {
+  const sortie = 'Uploaded clippitstudio (2.1 sec)\nWorker Version ID: 14cc4e7e-bf07-4e07-bddc-2aa34de000b5\nVersion Preview URL: https://x';
+  assert.equal(C.extraireVersion(sortie), '14cc4e7e-bf07-4e07-bddc-2aa34de000b5');
+  assert.equal(C.extraireVersion('--dry-run: exiting now.'), null);
+});
+
 test('comparerQuiz : nouveau déploiement, page en panne ou différente', () => {
   const avant = { deploiement: { id: 'x', date: 'd1' }, accueil: { statut: 200, titreOk: true } };
   contient(C.comparerQuiz(avant, { ...avant, deploiement: { id: 'y', date: 'd2' } }), /nouveau déploiement/);

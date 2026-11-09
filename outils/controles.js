@@ -130,7 +130,9 @@ function dernierDeploiement(liste) {
   return { id: d.id, date: d.created_on };
 }
 
-// etat : { deploiement: { id, date }, accueil: { statut, titreOk } }
+// etat : { deploiement: { id, date } | null, limite: bool, accueil: { statut, titreOk } }
+// limite = la clé n'a pas le droit de lire le quiz : c'est la clé de GitHub
+// Actions, limitée à clippitstudio, qui ne peut donc pas le modifier non plus.
 function comparerQuiz(avant, apres) {
   const erreurs = [];
   if (!apres.accueil || apres.accueil.statut !== 200) {
@@ -138,6 +140,7 @@ function comparerQuiz(avant, apres) {
   } else if (!apres.accueil.titreOk) {
     erreurs.push("La page d'accueil du quiz n'est plus celle du quiz.");
   }
+  if (avant.limite && apres.limite) return erreurs;
   if (!avant.deploiement || !apres.deploiement) {
     erreurs.push('Impossible de lire le dernier déploiement du quiz.');
   } else if (avant.deploiement.id !== apres.deploiement.id) {
@@ -146,8 +149,19 @@ function comparerQuiz(avant, apres) {
   return erreurs;
 }
 
+// Réponse de l'API Cloudflare à une clé qui n'a pas le droit d'agir.
+function estRefusDAcces(sortie) {
+  return /\[code: (10000|10023|9109)\]|Authentication error|not authorized|forbidden|\b403\b/i.test(sortie);
+}
+
+// Identifiant de la version téléversée par `wrangler versions upload`.
+function extraireVersion(sortie) {
+  const m = /Version ID:\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(sortie);
+  return m ? m[1] : null;
+}
+
 module.exports = {
   NOM, DOMAINES, DOSSIER, FICHIERS_SPECIAUX,
   verifierConfig, verifierRoutes, verifierFichiers, cheminVersUrl,
-  dernierDeploiement, comparerQuiz,
+  dernierDeploiement, comparerQuiz, estRefusDAcces, extraireVersion,
 };

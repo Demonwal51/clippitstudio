@@ -8,7 +8,8 @@ En ligne sur **https://clippitstudio.cc** (et https://www.clippitstudio.cc).
    d'accueil, les images vont dans `public/img/`.
 2. Faire un commit et le pousser sur la branche **`main`** (GitHub Desktop,
    VS Code, `git push`, ou « Add file → Upload files » sur github.com).
-3. Environ une minute plus tard, c'est en ligne. Sur GitHub, à côté du commit :
+3. Environ une minute plus tard, c'est en ligne. Sur GitHub, à côté du commit
+   (ou dans l'onglet **Actions**) :
    - **coche verte** : en ligne, et vérifié sur les deux adresses ;
    - **croix rouge** : rien n'a changé en ligne, ou la vérification a trouvé un
      problème. Voir « Si c'est rouge » plus bas.
@@ -33,9 +34,9 @@ npm run verifier
 ## Règles
 
 - **Ne modifier que `public/`.** Ne touche pas à `wrangler.jsonc`, `outils/`,
-  `package.json` ni `package-lock.json`. Le compte Cloudflare héberge aussi un
-  autre site, et ces fichiers le protègent : s'ils sont modifiés de travers, la
-  mise en ligne est refusée.
+  `.github/`, `package.json` ni `package-lock.json`. Ce sont eux qui mettent le
+  site en ligne et le vérifient : s'ils sont modifiés de travers, la mise en
+  ligne est refusée.
 - **Seulement des fichiers statiques** : HTML, CSS, JavaScript qui tourne dans
   le navigateur, images, polices. Pas de code serveur.
 - **Images légères** : visez moins de 1 Mo (format WebP, taille adaptée à
@@ -45,14 +46,15 @@ npm run verifier
 
 ## Si c'est rouge
 
-Le détail est dans le journal de Cloudflare, que seul wal peut ouvrir.
+Clique sur la croix rouge, puis sur **Details** : le journal explique ce qui
+s'est passé, étape par étape. Les lignes `[ERREUR]` disent quoi corriger.
 
-- Le plus souvent, un changement enfreint une règle : lance
-  `npm run verifier`, corrige ce qu'il signale, puis pousse à nouveau.
-  Rien n'a été envoyé.
-- Sinon, demande le journal à wal.
-- Si wal te dit que le journal contient **« ARRÊT : ne tente PAS de réparer le
-  quiz »** : ne pousse plus rien tant qu'il n'a pas regardé.
+- Le plus souvent, un changement enfreint une règle (étape 1) : corrige ce
+  qui est signalé, puis pousse à nouveau. Rien n'a été envoyé. Tu peux aussi
+  vérifier avant de pousser avec `npm run verifier`.
+- Si le journal contient **« ARRÊT : ne tente PAS de réparer le quiz »** :
+  préviens wal et ne pousse plus rien tant qu'il n'a pas regardé.
+- Sinon, relance depuis l'onglet **Actions** (« Re-run jobs ») ou demande à wal.
 
 ## Pour wal
 
