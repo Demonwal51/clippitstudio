@@ -199,7 +199,7 @@ async function etatQuiz() {
   } catch (e) {
     accueil = { statut: 0, titreOk: false, detail: e.message };
   }
-  const diagnostic = (r.erreurs || r.sortie).trim().split('\n').slice(-3).join(' ');
+  const diagnostic = r.code === 0 ? '' : C.resumerErreur(r.erreurs + '\n' + r.sortie);
   return { deploiement, limite, accueil, diagnostic };
 }
 
@@ -293,7 +293,8 @@ async function principal() {
   etape('2. État de référence du quiz');
   const avant = await etatQuiz();
   if (avant.limite) {
-    ok('la clé ne peut pas lire le quiz : elle est limitée à clippitstudio, donc ne peut pas le modifier non plus');
+    ok('la clé ne voit pas le quiz : elle est limitée à clippitstudio, donc ne peut pas le modifier non plus');
+    info(`(réponse de Cloudflare : ${avant.diagnostic})`);
   } else if (!avant.deploiement) {
     arreter(`[ERREUR] Impossible de lire les déploiements du quiz (${avant.diagnostic}). Rien n'a été envoyé.`);
   } else {

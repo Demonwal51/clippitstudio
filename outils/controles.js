@@ -149,9 +149,24 @@ function comparerQuiz(avant, apres) {
   return erreurs;
 }
 
-// Réponse de l'API Cloudflare à une clé qui n'a pas le droit d'agir.
+// Réponse de l'API Cloudflare à une clé qui ne voit pas le Worker demandé :
+// refus d'accès, ou « n'existe pas » (10007), car une clé limitée à
+// clippitstudio ne voit pas les autres Workers. N'est utilisé qu'en CI ; une
+// disparition réelle du quiz y serait repérée par sa page d'accueil.
 function estRefusDAcces(sortie) {
-  return /\[code: (10000|10023|9109)\]|Authentication error|not authorized|forbidden|\b403\b/i.test(sortie);
+  return /\[code: (10000|10007|10023|9109)\]|Authentication error|does not exist on your account|not authorized|forbidden|\b403\b/i
+    .test(sortie);
+}
+
+// Lignes utiles d'une erreur de wrangler, sans le bruit (journal, bannière).
+function resumerErreur(sortie) {
+  const lignes = String(sortie)
+    .replace(/\x1b\[[0-9;]*m/g, '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => /\[code: \d+\]|ERROR|failed|error|exist|denied|forbidden/i.test(l))
+    .filter((l) => !/Logs were written|Writing logs/i.test(l));
+  return (lignes.length ? lignes : String(sortie).trim().split('\n').slice(-3)).slice(0, 4).join(' | ');
 }
 
 // Identifiant de la version téléversée par `wrangler versions upload`.
@@ -163,5 +178,5 @@ function extraireVersion(sortie) {
 module.exports = {
   NOM, DOMAINES, DOSSIER, FICHIERS_SPECIAUX,
   verifierConfig, verifierRoutes, verifierFichiers, cheminVersUrl,
-  dernierDeploiement, comparerQuiz, estRefusDAcces, extraireVersion,
+  dernierDeploiement, comparerQuiz, estRefusDAcces, resumerErreur, extraireVersion,
 };

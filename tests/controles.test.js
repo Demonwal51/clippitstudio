@@ -140,11 +140,22 @@ test('comparerQuiz : clé limitée des deux côtés -> seul l\'accueil compte', 
   contient(C.comparerQuiz(limite, { ...limite, limite: false }), /Impossible de lire/);
 });
 
-test('refus d\'accès reconnu, autres erreurs non', () => {
+test('refus d\'accès reconnu (y compris Worker invisible), panne réseau non', () => {
   assert.ok(C.estRefusDAcces('A request to the Cloudflare API failed.\n  Authentication error [code: 10000]'));
   assert.ok(C.estRefusDAcces('failed with status 403 Forbidden'));
-  assert.ok(!C.estRefusDAcces('This Worker does not exist on your account. [code: 10007]'));
+  assert.ok(C.estRefusDAcces('This Worker does not exist on your account. [code: 10007]'));
   assert.ok(!C.estRefusDAcces('getaddrinfo ENOTFOUND api.cloudflare.com'));
+  assert.ok(!C.estRefusDAcces('Unexpected token < in JSON at position 0'));
+});
+
+test('résumé d\'erreur : garde le message, retire le chemin du journal', () => {
+  const sortie = '\x1b[31mX [ERROR] A request to the Cloudflare API failed.\x1b[0m\n'
+    + '  This Worker does not exist on your account. [code: 10007]\n'
+    + '🪵  Logs were written to "/home/runner/.config/.wrangler/logs/x.log"\n';
+  const r = C.resumerErreur(sortie);
+  assert.match(r, /\[code: 10007\]/);
+  assert.match(r, /\[ERROR\] A request/);
+  assert.doesNotMatch(r, /Logs were written/);
 });
 
 test('identifiant de version extrait de la sortie de versions upload', () => {
