@@ -1,0 +1,14 @@
+// Site ClippitStudio : Worker SÉPARÉ du quiz.
+// Ne jamais mettre "quiz-hardcore" comme nom ici : un deploy remplacerait le quiz.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "clippitstudio",
+  "compatibility_date": "2026-11-01",
+
+  // Fichiers statiques uniquement, pas de "main" : aucun script exécuté,
+  // donc rien ne s'impute sur les 100 000 requêtes Workers/jour partagées avec le quiz.
+  "assets": { "directory": "public" },
+
+  // Servi aussi sur https://clippitstudio.quiz-hardcore.workers.dev
+  "workers_dev": true
+}
