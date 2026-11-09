@@ -278,8 +278,15 @@ async function principal() {
 
   if (EN_CI) {
     if (BRANCHE_CI !== 'main') arreter(`[ERREUR] Branche "${BRANCHE_CI}" : seule main est mise en ligne.`);
-    if (!process.env.CLOUDFLARE_API_TOKEN || !process.env.CLOUDFLARE_ACCOUNT_ID) {
-      arreter('[ERREUR] Secret CLOUDFLARE_API_TOKEN ou variable CLOUDFLARE_ACCOUNT_ID absents des réglages du dépôt GitHub : préviens wal.');
+    for (const nom of ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']) {
+      // Un copier-coller dans GitHub garde souvent le retour à la ligne final,
+      // que l'en-tête HTTP refuse : on l'enlève. wrangler hérite de cet env.
+      const valeur = (process.env[nom] || '').trim();
+      if (!valeur) arreter(`[ERREUR] ${nom} absent des réglages du dépôt GitHub : préviens wal.`);
+      if (/\s/.test(valeur)) {
+        arreter(`[ERREUR] ${nom} contient un espace ou un retour à la ligne au milieu : recolle-le dans les réglages du dépôt GitHub.`);
+      }
+      process.env[nom] = valeur;
     }
   }
   if (MODE === 'deployer' && !EN_CI) {
