@@ -38,9 +38,12 @@ https://github.com/Demonwal51/clippitstudio, sans validation. GitHub Actions
 1. contrôles du projet (`outils/controles.js`) : nom `clippitstudio`, liste
    blanche de clés dans `wrangler.jsonc` (pas de `main`, `build`, D1, cron,
    `env`…), exactement les deux domaines personnalisés, limites de fichiers ;
-2. référence du quiz : dernier déploiement (`deployments list --json`) et page
-   d'accueil. En CI, un refus d'accès est accepté : il prouve que la clé est
-   limitée à clippitstudio, et seule la page d'accueil est alors comparée ;
+2. référence du quiz : dernier déploiement et page d'accueil. En local, par
+   `wrangler deployments list --json`. En CI, par l'API directement (wrangler
+   y renvoie parfois un échec sans détail) : d'abord `tokens/verify`, puis,
+   si la clé est valide, une réponse 401/403/404 sur les déploiements du quiz
+   prouve qu'elle est limitée à clippitstudio. Seule la page d'accueil est
+   alors comparée ;
 3. `versions upload` puis `versions deploy <id>@100% --yes`, avec `--config
    wrangler.jsonc --name clippitstudio`. Ces commandes ne touchent pas aux
    domaines : la clé n'a besoin d'aucun droit sur la zone. Pour changer de

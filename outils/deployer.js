@@ -183,15 +183,51 @@ async function enParallele(taches, largeur, travail) {
 
 // ---------- 2 et 4. Le quiz ----------
 
-async function etatQuiz() {
+// API Cloudflare appelée directement avec la clé de la CI : on obtient le code
+// HTTP exact, là où wrangler se contente parfois de « la requête a échoué ».
+async function apiCloudflare(chemin) {
+  const r = await obtenir('api.cloudflare.com', `/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}${chemin}`, null, {
+    authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`,
+    accept: 'application/json',
+  });
+  let json = null;
+  try { json = JSON.parse(r.corps.toString('utf8')); } catch { /* pas du JSON */ }
+  const erreurs = ((json && json.errors) || []).map((e) => `${e.message} [code: ${e.code}]`).join(' ; ');
+  return { statut: r.statut, json, resume: `HTTP ${r.statut}${erreurs ? ` : ${erreurs}` : ''}` };
+}
+
+async function verifierCle() {
+  const r = await apiCloudflare('/tokens/verify');
+  const actif = r.statut === 200 && r.json && r.json.success && r.json.result && r.json.result.status === 'active';
+  if (!actif) {
+    arreter(`[ERREUR] Cloudflare refuse la clé CLOUDFLARE_API_TOKEN (${r.resume}) : recolle-la dans les réglages du dépôt GitHub. Rien n'a été envoyé.`);
+  }
+  ok('clé Cloudflare valide');
+}
+
+// En CI : 401/403/404 avec une clé valide = le quiz est invisible pour elle,
+// donc elle est limitée à clippitstudio. Toute autre réponse est une erreur.
+async function deploiementsQuizCI() {
+  const r = await apiCloudflare(`/workers/scripts/${QUIZ.nom}/deployments`);
+  if (r.statut === 200 && r.json && r.json.result) {
+    const liste = Array.isArray(r.json.result) ? r.json.result : r.json.result.deployments;
+    return { deploiement: C.dernierDeploiement(liste), limite: false, diagnostic: '' };
+  }
+  return { deploiement: null, limite: [401, 403, 404].includes(r.statut), diagnostic: r.resume };
+}
+
+// En local : ta connexion wrangler, qui voit tout le compte. Un refus y est une erreur.
+async function deploiementsQuizLocal() {
   const r = await wrangler(['deployments', 'list', '--name', QUIZ.nom, '--json'], { afficher: false });
   let deploiement = null;
   if (r.code === 0) {
     try { deploiement = C.dernierDeploiement(JSON.parse(r.sortie)); } catch { /* sortie illisible */ }
   }
-  // En CI, un refus prouve que la clé est limitée à clippitstudio. En local
-  // (ta connexion wrangler, qui voit tout le compte), un refus reste une erreur.
-  const limite = EN_CI && !deploiement && r.code !== 0 && C.estRefusDAcces(r.sortie + r.erreurs);
+  return { deploiement, limite: false, diagnostic: r.code === 0 ? '' : C.resumerErreur(r.erreurs + '\n' + r.sortie) };
+}
+
+async function etatQuiz() {
+  const { deploiement, limite, diagnostic } = EN_CI ? await deploiementsQuizCI() : await deploiementsQuizLocal();
   let accueil;
   try {
     const page = await obtenir(QUIZ.hote, '/');
@@ -199,7 +235,6 @@ async function etatQuiz() {
   } catch (e) {
     accueil = { statut: 0, titreOk: false, detail: e.message };
   }
-  const diagnostic = r.code === 0 ? '' : C.resumerErreur(r.erreurs + '\n' + r.sortie);
   return { deploiement, limite, accueil, diagnostic };
 }
 
@@ -298,6 +333,7 @@ async function principal() {
   }
 
   etape('2. État de référence du quiz');
+  if (EN_CI) await verifierCle();
   const avant = await etatQuiz();
   if (avant.limite) {
     ok('la clé ne voit pas le quiz : elle est limitée à clippitstudio, donc ne peut pas le modifier non plus');
