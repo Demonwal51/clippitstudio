@@ -3,8 +3,9 @@
 Site de Clippit Studio, Worker Cloudflare `clippitstudio`, sur le **même compte**
 que le quiz (`quiz-hardcore`). Pour l'instant : une page d'attente statique.
 
-- En ligne : https://clippitstudio.quiz-hardcore.workers.dev (et clippitstudio.cc
-  une fois rattaché).
+- En ligne : https://clippitstudio.cc et https://www.clippitstudio.cc (domaines
+  personnalisés, depuis le 2026-11-09), et
+  https://clippitstudio.quiz-hardcore.workers.dev.
 - Fichiers servis : `public/`. Pas de `main` : aucun script exécuté, les
   requêtes de fichiers statiques ne comptent pas dans le quota Workers.
 - Pas de base D1 pour l'instant. S'il en faut une : `npx wrangler d1 create
@@ -29,12 +30,22 @@ que le quiz (`quiz-hardcore`). Pour l'instant : une page d'attente statique.
 ## Déployer
 
 ```
-npx wrangler deploy --dry-run
-npx wrangler deploy
+npx wrangler deploy --name clippitstudio --dry-run
+npx wrangler deploy --name clippitstudio
 ```
 
-Avant : vérifier dans la sortie du dry-run que le Worker s'appelle
-`clippitstudio`. Après : vérifier que le quiz va bien —
+Avant : vérifier que le Worker s'appelle `clippitstudio`. wrangler 4.158
+n'affiche pas le nom dans la sortie du dry-run : le lire avec
+`node -e "console.log(require('wrangler').unstable_readConfig({config:'wrangler.jsonc'}).name)"`.
+Le `--name clippitstudio` sur la ligne de commande sert de ceinture de sécurité.
+
+Lancé sans terminal interactif (par Claude), wrangler répond **oui** tout seul
+à ses questions de confirmation, y compris « remplacer ces enregistrements DNS /
+domaines ? ». Avant d'ajouter un domaine ou une route, vérifier par DoH que le
+nom n'a encore aucun enregistrement ; sinon, faire lancer la commande par
+l'utilisateur dans un vrai terminal.
+
+Après : vérifier que le quiz va bien —
 https://quiz-hardcore.quiz-hardcore.workers.dev répond avec son accueil, et
 `npx wrangler deployments list --name quiz-hardcore` montre la même date de
 dernier déploiement qu'avant. Si l'un échoue : tout arrêter et prévenir, sans
