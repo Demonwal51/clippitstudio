@@ -1,6 +1,11 @@
 {
   "name": "clippitstudio",
   "private": true,
+  "scripts": {
+    "deployer": "node outils/deployer.js",
+    "verifier": "node outils/deployer.js --verifier",
+    "test": "node --test"
+  },
   "devDependencies": {
     "wrangler": "^4.158.0"
   }
